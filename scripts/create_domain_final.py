@@ -47,6 +47,33 @@ JMS_CF_JNDI = 'jms/TestConnectionFactory'
 JMS_QUEUE_NAME = 'TestQueue'
 JMS_QUEUE_JNDI = 'jms/TestQueue'
 
+# Server startup parameters
+JVM_ARGS = {
+    'memory': {
+        'min_heap': '512m',      # -Xms
+        'max_heap': '2048m',     # -Xmx
+        'min_perm': '256m',      # -XX:PermSize (for Java 7)
+        'max_perm': '512m'       # -XX:MaxPermSize (for Java 7)
+    },
+    'gc_options': [
+        '-XX:+UseG1GC',
+        '-XX:MaxGCPauseMillis=200',
+        '-XX:+PrintGCDetails',
+        '-XX:+PrintGCDateStamps',
+        '-Xloggc:${DOMAIN_HOME}/logs/gc.log'
+    ],
+    'system_properties': {
+        'weblogic.security.SSL.ignoreHostnameVerification': 'true',
+        'java.security.egd': 'file:/dev/./urandom',
+        'config.dir': '${DOMAIN_HOME}/config'  # Configuration file directory
+    },
+    'classpath': [
+        # Add additional JAR files or directories here
+        # '${DOMAIN_HOME}/lib/custom.jar',
+        # '${DOMAIN_HOME}/lib/external/*'
+    ]
+}
+
 print('========================================')
 print('WebLogic Domain Creation Script (WLST)')
 print('========================================')
@@ -64,6 +91,41 @@ cd('/')
 cd('Servers/AdminServer')
 set('ListenAddress', '0.0.0.0')
 set('ListenPort', ADMIN_PORT)
+
+# Configure JVM arguments
+print('  Configuring JVM arguments...')
+create('AdminServer', 'ServerStart')
+cd('ServerStart/AdminServer')
+
+# Build JVM arguments string
+jvm_args_list = []
+
+# Memory settings
+jvm_args_list.append('-Xms' + JVM_ARGS['memory']['min_heap'])
+jvm_args_list.append('-Xmx' + JVM_ARGS['memory']['max_heap'])
+# Note: PermSize is for Java 7 and earlier. Java 8+ uses MetaspaceSize
+if JVM_ARGS['memory'].get('min_perm'):
+    jvm_args_list.append('-XX:PermSize=' + JVM_ARGS['memory']['min_perm'])
+if JVM_ARGS['memory'].get('max_perm'):
+    jvm_args_list.append('-XX:MaxPermSize=' + JVM_ARGS['memory']['max_perm'])
+
+# GC options
+jvm_args_list.extend(JVM_ARGS['gc_options'])
+
+# System properties
+for key, value in JVM_ARGS['system_properties'].items():
+    jvm_args_list.append('-D' + key + '=' + value)
+
+# Set arguments
+arguments = ' '.join(jvm_args_list)
+set('Arguments', arguments)
+
+# Set classpath if specified
+if JVM_ARGS['classpath']:
+    classpath = ';'.join(JVM_ARGS['classpath'])  # Windows uses ';', Unix uses ':'
+    set('ClassPath', classpath)
+
+print('  [OK] JVM arguments configured')
 
 # Set admin credentials
 cd('/')
@@ -85,6 +147,14 @@ print('[4/5] Writing domain...')
 writeDomain(DOMAIN_HOME)
 closeTemplate()
 print('  [OK] Domain written to: ' + DOMAIN_HOME)
+
+# Create configuration directory
+config_dir = DOMAIN_HOME + '/config'
+if not os.path.exists(config_dir):
+    os.makedirs(config_dir)
+    print('  [OK] Configuration directory created: ' + config_dir)
+else:
+    print('  [OK] Configuration directory exists: ' + config_dir)
 print('')
 
 # Configure DataSource and JMS
@@ -182,13 +252,26 @@ print('  Domain Name: ' + DOMAIN_NAME)
 print('  Domain Path: ' + DOMAIN_HOME)
 print('  AdminServer Port: ' + str(ADMIN_PORT))
 print('  Console URL: http://localhost:' + str(ADMIN_PORT) + '/console')
+print('  Config Directory: ' + DOMAIN_HOME + '/config')
+print('')
+print('JVM Configuration:')
+print('  Min Heap: ' + JVM_ARGS['memory']['min_heap'])
+print('  Max Heap: ' + JVM_ARGS['memory']['max_heap'])
+print('  GC Type: G1GC')
+print('  GC Log: ' + DOMAIN_HOME + '/logs/gc.log')
+print('')
+print('DataSources Created: ' + str(len(DATASOURCES)))
+for ds in DATASOURCES:
+    print('  - ' + ds['name'] + ' (' + ds['jndi'] + ')')
 print('')
 print('Next Steps:')
-print('  1. Start AdminServer:')
+print('  1. Place configuration files in: ' + DOMAIN_HOME + '/config')
+print('')
+print('  2. Start AdminServer:')
 print('     cd ' + DOMAIN_HOME)
 print('     .\\bin\\startWebLogic.cmd')
 print('')
-print('  2. Access admin console:')
+print('  3. Access admin console:')
 print('     URL: http://localhost:' + str(ADMIN_PORT) + '/console')
 print('     Username: ' + ADMIN_USERNAME)
 print('     Password: ' + ADMIN_PASSWORD)
