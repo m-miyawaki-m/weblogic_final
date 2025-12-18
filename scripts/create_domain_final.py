@@ -11,13 +11,32 @@ ADMIN_USERNAME = 'weblogic'
 ADMIN_PASSWORD = 'welcome1'
 ADMIN_PORT = 7001
 
-# Database configuration
-JDBC_NAME = 'TestDS'
-JDBC_JNDI = 'jdbc/TestDS'
-JDBC_URL = 'jdbc:oracle:thin:@localhost:1521:ORCL'
-JDBC_USER = 'scott'
-JDBC_PASSWORD = 'tiger'
-JDBC_DRIVER = 'oracle.jdbc.OracleDriver'
+# Database configuration (multiple datasources)
+DATASOURCES = [
+    {
+        'name': 'TestDS',
+        'jndi': 'jdbc/TestDS',
+        'url': 'jdbc:oracle:thin:@localhost:1521:ORCL',
+        'user': 'scott',
+        'password': 'tiger',
+        'driver': 'oracle.jdbc.OracleDriver',
+        'initial_capacity': 1,
+        'max_capacity': 15,
+        'min_capacity': 1
+    },
+    # Add more datasources here as needed
+    # {
+    #     'name': 'TestDS2',
+    #     'jndi': 'jdbc/TestDS2',
+    #     'url': 'jdbc:oracle:thin:@localhost:1521:ORCL2',
+    #     'user': 'user2',
+    #     'password': 'password2',
+    #     'driver': 'oracle.jdbc.OracleDriver',
+    #     'initial_capacity': 1,
+    #     'max_capacity': 10,
+    #     'min_capacity': 1
+    # },
+]
 
 # JMS configuration
 JMS_SERVER_NAME = 'TestJMSServer'
@@ -72,43 +91,46 @@ print('')
 print('[5/5] Configuring DataSource and JMS...')
 readDomain(DOMAIN_HOME)
 
-# Create DataSource
-print('  Creating DataSource: ' + JDBC_NAME + '...')
-cd('/')
-create(JDBC_NAME, 'JDBCSystemResource')
-cd('/JDBCSystemResource/' + JDBC_NAME + '/JdbcResource/' + JDBC_NAME)
-create('myJdbcDataSourceParams','JDBCDataSourceParams')
-cd('JDBCDataSourceParams/NO_NAME_0')
-set('JNDIName', JDBC_JNDI)
-set('GlobalTransactionsProtocol', 'TwoPhaseCommit')
+# Create DataSources
+for ds in DATASOURCES:
+    print('  Creating DataSource: ' + ds['name'] + '...')
+    cd('/')
+    create(ds['name'], 'JDBCSystemResource')
+    cd('/JDBCSystemResource/' + ds['name'] + '/JdbcResource/' + ds['name'])
+    create('myJdbcDataSourceParams','JDBCDataSourceParams')
+    cd('JDBCDataSourceParams/NO_NAME_0')
+    set('JNDIName', ds['jndi'])
+    set('GlobalTransactionsProtocol', 'TwoPhaseCommit')
 
-cd('/JDBCSystemResource/' + JDBC_NAME + '/JdbcResource/' + JDBC_NAME)
-create('myJdbcDriverParams','JDBCDriverParams')
-cd('JDBCDriverParams/NO_NAME_0')
-set('DriverName', JDBC_DRIVER)
-set('URL', JDBC_URL)
-set('PasswordEncrypted', JDBC_PASSWORD)
-set('UseXADataSourceInterface', 'false')
+    cd('/JDBCSystemResource/' + ds['name'] + '/JdbcResource/' + ds['name'])
+    create('myJdbcDriverParams','JDBCDriverParams')
+    cd('JDBCDriverParams/NO_NAME_0')
+    set('DriverName', ds['driver'])
+    set('URL', ds['url'])
+    set('PasswordEncrypted', ds['password'])
+    set('UseXADataSourceInterface', 'false')
 
-print('  Setting Properties')
-create('myProperties','Properties')
-cd('Properties/NO_NAME_0')
-create('user', 'Property')
-cd('Property/user')
-set('Value', JDBC_USER)
+    print('    Setting Properties')
+    create('myProperties','Properties')
+    cd('Properties/NO_NAME_0')
+    create('user', 'Property')
+    cd('Property/user')
+    set('Value', ds['user'])
 
-cd('/JDBCSystemResource/' + JDBC_NAME + '/JdbcResource/' + JDBC_NAME)
-create('myJdbcConnectionPoolParams','JDBCConnectionPoolParams')
-cd('JDBCConnectionPoolParams/NO_NAME_0')
-set('InitialCapacity', 1)
-set('MaxCapacity', 15)
-set('MinCapacity', 1)
-set('TestTableName', 'SQL SELECT 1 FROM DUAL')
-set('TestConnectionsOnReserve', 1)
+    cd('/JDBCSystemResource/' + ds['name'] + '/JdbcResource/' + ds['name'])
+    create('myJdbcConnectionPoolParams','JDBCConnectionPoolParams')
+    cd('JDBCConnectionPoolParams/NO_NAME_0')
+    set('InitialCapacity', ds['initial_capacity'])
+    set('MaxCapacity', ds['max_capacity'])
+    set('MinCapacity', ds['min_capacity'])
+    set('TestTableName', 'SQL SELECT 1 FROM DUAL')
+    set('TestConnectionsOnReserve', 1)
 
-cd('/JDBCSystemResource/' + JDBC_NAME)
-set('Target', 'AdminServer')
-print('  [OK] DataSource created')
+    cd('/JDBCSystemResource/' + ds['name'])
+    set('Target', 'AdminServer')
+    print('  [OK] DataSource ' + ds['name'] + ' created')
+
+print('  [OK] All DataSources created (' + str(len(DATASOURCES)) + ' total)')
 
 # Create JMS Server
 print('  Creating JMS Server: ' + JMS_SERVER_NAME + '...')
