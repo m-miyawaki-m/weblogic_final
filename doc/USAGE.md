@@ -119,27 +119,83 @@ AdminServerのコンソールで `Ctrl+C` を押す
 
 ## 設定のカスタマイズ
 
-### データベース接続の変更
+### 複数のデータソースの設定
 
 [scripts/create_domain_final.py](../scripts/create_domain_final.py) を編集:
 
 ```python
-# Database configuration
-JDBC_NAME = 'MyDS'                 # データソース名
-JDBC_JNDI = 'jdbc/MyDS'           # JNDI名
-JDBC_URL = 'jdbc:oracle:thin:@myhost:1521:MYDB'  # 接続URL
-JDBC_USER = 'myuser'              # ユーザー名
-JDBC_PASSWORD = 'mypassword'      # パスワード
-JDBC_DRIVER = 'oracle.jdbc.OracleDriver'
+# Database configuration (multiple datasources)
+DATASOURCES = [
+    {
+        'name': 'ProductionDS',
+        'jndi': 'jdbc/ProductionDS',
+        'url': 'jdbc:oracle:thin:@prod-server:1521:PROD',
+        'user': 'produser',
+        'password': 'prodpass',
+        'driver': 'oracle.jdbc.OracleDriver',
+        'initial_capacity': 5,
+        'max_capacity': 50,
+        'min_capacity': 5
+    },
+    {
+        'name': 'ReportingDS',
+        'jndi': 'jdbc/ReportingDS',
+        'url': 'jdbc:oracle:thin:@report-server:1521:REPORT',
+        'user': 'reportuser',
+        'password': 'reportpass',
+        'driver': 'oracle.jdbc.OracleDriver',
+        'initial_capacity': 2,
+        'max_capacity': 20,
+        'min_capacity': 2
+    }
+]
+```
+
+各データソースには以下のプロパティを設定できます:
+- `name`: データソース名
+- `jndi`: JNDI名
+- `url`: データベース接続URL
+- `user`: データベースユーザー名
+- `password`: データベースパスワード
+- `driver`: JDBCドライバークラス名
+- `initial_capacity`: 初期接続数
+- `max_capacity`: 最大接続数
+- `min_capacity`: 最小接続数
+
+### データベース接続の変更（単一データソースの場合）
+
+```python
+DATASOURCES = [
+    {
+        'name': 'MyDS',
+        'jndi': 'jdbc/MyDS',
+        'url': 'jdbc:oracle:thin:@myhost:1521:MYDB',
+        'user': 'myuser',
+        'password': 'mypassword',
+        'driver': 'oracle.jdbc.OracleDriver',
+        'initial_capacity': 1,
+        'max_capacity': 15,
+        'min_capacity': 1
+    }
+]
 ```
 
 ### MySQLを使用する場合
 
 ```python
-JDBC_URL = 'jdbc:mysql://localhost:3306/mydb?useSSL=false'
-JDBC_USER = 'root'
-JDBC_PASSWORD = 'password'
-JDBC_DRIVER = 'com.mysql.cj.jdbc.Driver'
+DATASOURCES = [
+    {
+        'name': 'MySQLDS',
+        'jndi': 'jdbc/MySQLDS',
+        'url': 'jdbc:mysql://localhost:3306/mydb?useSSL=false',
+        'user': 'root',
+        'password': 'password',
+        'driver': 'com.mysql.cj.jdbc.Driver',
+        'initial_capacity': 1,
+        'max_capacity': 15,
+        'min_capacity': 1
+    }
+]
 ```
 
 **注意:** MySQL JDBCドライバーをダウンロードして配置してください。
@@ -147,10 +203,19 @@ JDBC_DRIVER = 'com.mysql.cj.jdbc.Driver'
 ### PostgreSQLを使用する場合
 
 ```python
-JDBC_URL = 'jdbc:postgresql://localhost:5432/mydb'
-JDBC_USER = 'postgres'
-JDBC_PASSWORD = 'password'
-JDBC_DRIVER = 'org.postgresql.Driver'
+DATASOURCES = [
+    {
+        'name': 'PostgreSQLDS',
+        'jndi': 'jdbc/PostgreSQLDS',
+        'url': 'jdbc:postgresql://localhost:5432/mydb',
+        'user': 'postgres',
+        'password': 'password',
+        'driver': 'org.postgresql.Driver',
+        'initial_capacity': 1,
+        'max_capacity': 15,
+        'min_capacity': 1
+    }
+]
 ```
 
 ### ポート番号の変更
@@ -183,6 +248,180 @@ JMS_CF_JNDI = 'jms/MyConnectionFactory'
 JMS_QUEUE_NAME = 'MyQueue'
 JMS_QUEUE_JNDI = 'jms/MyQueue'
 ```
+
+### JVM起動パラメータの設定
+
+#### メモリ設定の変更
+
+```python
+JVM_ARGS = {
+    'memory': {
+        'min_heap': '1024m',     # 最小ヒープサイズ (-Xms)
+        'max_heap': '4096m',     # 最大ヒープサイズ (-Xmx)
+        'min_perm': '512m',      # 最小PermGenサイズ (-XX:PermSize) ※Java 7以前
+        'max_perm': '1024m'      # 最大PermGenサイズ (-XX:MaxPermSize) ※Java 7以前
+    },
+    # 他の設定は省略...
+}
+```
+
+**推奨設定:**
+- 開発環境: Xms=512m, Xmx=2048m
+- 本番環境（小規模）: Xms=2048m, Xmx=4096m
+- 本番環境（大規模）: Xms=4096m, Xmx=8192m
+
+**注意:** Java 8以降では、PermSizeの代わりにMetaspaceSize/MaxMetaspaceSizeを使用します。
+
+#### GC（ガベージコレクション）オプションの変更
+
+```python
+JVM_ARGS = {
+    # memory設定は省略...
+    'gc_options': [
+        '-XX:+UseG1GC',                          # G1GCを使用
+        '-XX:MaxGCPauseMillis=200',              # GC停止時間の目標
+        '-XX:+PrintGCDetails',                   # GC詳細ログ出力
+        '-XX:+PrintGCDateStamps',                # GCログにタイムスタンプ追加
+        '-Xloggc:${DOMAIN_HOME}/logs/gc.log',    # GCログファイル
+        '-XX:+UseGCLogFileRotation',             # GCログローテーション
+        '-XX:NumberOfGCLogFiles=5',              # ログファイル数
+        '-XX:GCLogFileSize=10M'                  # ログファイルサイズ
+    ],
+    # 他の設定は省略...
+}
+```
+
+**GCアルゴリズムの選択:**
+
+**G1GC（推奨 - Java 8以降）:**
+```python
+'-XX:+UseG1GC',
+'-XX:MaxGCPauseMillis=200',
+```
+
+**ParallelGC（スループット重視）:**
+```python
+'-XX:+UseParallelGC',
+'-XX:ParallelGCThreads=4',
+```
+
+**CMS GC（低レイテンシ重視 - Java 8）:**
+```python
+'-XX:+UseConcMarkSweepGC',
+'-XX:+CMSParallelRemarkEnabled',
+```
+
+#### システムプロパティの追加
+
+```python
+JVM_ARGS = {
+    # memory, gc_optionsは省略...
+    'system_properties': {
+        # SSL検証をスキップ（開発環境のみ）
+        'weblogic.security.SSL.ignoreHostnameVerification': 'true',
+
+        # ランダム数生成の高速化
+        'java.security.egd': 'file:/dev/./urandom',
+
+        # 設定ファイルディレクトリ
+        'config.dir': '${DOMAIN_HOME}/config',
+
+        # カスタムプロパティの例
+        'app.environment': 'production',
+        'app.log.level': 'INFO',
+        'file.encoding': 'UTF-8',
+
+        # タイムゾーン設定
+        'user.timezone': 'Asia/Tokyo'
+    },
+    # 他の設定は省略...
+}
+```
+
+**よく使用されるシステムプロパティ:**
+- `file.encoding`: ファイルエンコーディング（UTF-8推奨）
+- `user.timezone`: タイムゾーン設定
+- `java.net.preferIPv4Stack`: IPv4を優先（true/false）
+- `weblogic.security.SSL.*`: SSL/TLS関連設定
+
+#### クラスパスの追加
+
+```python
+JVM_ARGS = {
+    # memory, gc_options, system_propertiesは省略...
+    'classpath': [
+        '${DOMAIN_HOME}/lib/custom.jar',        # カスタムJARファイル
+        '${DOMAIN_HOME}/lib/external/*',        # 外部ライブラリディレクトリ
+        'C:/shared/lib/common.jar',             # 共有ライブラリ
+    ]
+}
+```
+
+**使用例:**
+1. カスタムライブラリの配置:
+   ```powershell
+   mkdir C:\Oracle\Middleware\user_projects\domains\base_domain\lib
+   Copy-Item my-library.jar C:\Oracle\Middleware\user_projects\domains\base_domain\lib\
+   ```
+
+2. クラスパスに追加:
+   ```python
+   'classpath': [
+       '${DOMAIN_HOME}/lib/my-library.jar'
+   ]
+   ```
+
+#### 完全な設定例
+
+```python
+# Server startup parameters
+JVM_ARGS = {
+    'memory': {
+        'min_heap': '2048m',
+        'max_heap': '4096m',
+        # Java 8以降ではPermSizeは不要
+    },
+    'gc_options': [
+        '-XX:+UseG1GC',
+        '-XX:MaxGCPauseMillis=200',
+        '-XX:+PrintGCDetails',
+        '-XX:+PrintGCDateStamps',
+        '-Xloggc:${DOMAIN_HOME}/logs/gc.log',
+        '-XX:+UseGCLogFileRotation',
+        '-XX:NumberOfGCLogFiles=5',
+        '-XX:GCLogFileSize=10M'
+    ],
+    'system_properties': {
+        'file.encoding': 'UTF-8',
+        'user.timezone': 'Asia/Tokyo',
+        'config.dir': '${DOMAIN_HOME}/config',
+        'app.environment': 'production'
+    },
+    'classpath': [
+        '${DOMAIN_HOME}/lib/custom.jar'
+    ]
+}
+```
+
+### 設定ファイルディレクトリの使用
+
+スクリプト実行時に自動的に `${DOMAIN_HOME}/config` ディレクトリが作成されます。
+
+**設定ファイルの配置例:**
+
+1. アプリケーション設定ファイル:
+   ```powershell
+   # application.propertiesを配置
+   Copy-Item application.properties C:\Oracle\Middleware\user_projects\domains\base_domain\config\
+   ```
+
+2. アプリケーションから参照:
+   ```java
+   String configDir = System.getProperty("config.dir");
+   String configFile = configDir + "/application.properties";
+   Properties props = new Properties();
+   props.load(new FileInputStream(configFile));
+   ```
 
 ---
 
